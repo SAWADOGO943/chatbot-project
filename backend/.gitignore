@@ -1,0 +1,36 @@
+# Environnement virtuel Python — ne jamais envoyer sur GitHub
+venv/
+env/
+.venv/
+
+# Variables d'environnement — secrets, ne jamais partager
+.env
+.env.local
+.env.production
+
+# Fichiers compilés Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Base de données locale
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Distribution Python
+dist/
+build/
+*.egg-info/

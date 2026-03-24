@@ -1,0 +1,8 @@
+Le RAG (Retrieval-Augmented Generation) est une technique qui permet
+à un modèle de langage de chercher dans des documents avant de répondre.
+
+LangChain est un framework Python qui simplifie la construction
+de pipelines RAG en fournissant des composants prêts à l'emploi.
+
+ChromaDB est une base de données vectorielle qui stocke les embeddings
+et permet une recherche par similarité sémantique très rapide.

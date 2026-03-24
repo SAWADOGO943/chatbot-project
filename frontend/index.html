@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chatbot IA + RAG</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- ── EN-TÊTE ───────────────────────────── -->
+      <header class="chat-header">
+        <div class="header-info">
+          <div class="avatar">🤖</div>
+          <div>
+            <h1>Assistant IA</h1>
+            <span class="status" id="headerStatus">Propulsé par Gemini</span>
+          </div>
+        </div>
+
+        <!-- ── ONGLETS DE MODE ─────────────────── -->
+        <div class="mode-tabs">
+          <button
+            class="tab-btn active"
+            id="tabChat"
+            onclick="switchMode('chat')"
+          >
+            💬 Chat
+          </button>
+          <button class="tab-btn" id="tabRag" onclick="switchMode('rag')">
+            📚 RAG (Documents)
+          </button>
+        </div>
+      </header>
+
+      <!-- ── PANNEAU RAG (visible uniquement en mode RAG) ── -->
+      <div class="rag-panel" id="ragPanel" style="display: none">
+        <div class="rag-controls">
+          <div class="rag-status" id="ragStatus">
+            <span class="status-dot" id="statusDot">⚪</span>
+            <span id="statusText">Vérification du statut...</span>
+          </div>
+          <button class="index-btn" id="indexBtn" onclick="indexDocuments()">
+            🔄 Indexer les documents
+          </button>
+        </div>
+        <div class="rag-info" id="ragInfo" style="display: none">
+          <!-- Affiché après indexation réussie -->
+        </div>
+      </div>
+
+      <!-- ── ZONE MESSAGES ─────────────────────── -->
+      <main class="chat-messages" id="chatMessages">
+        <div class="message bot-message">
+          <div class="message-bubble">
+            Bonjour ! Je suis votre assistant IA. Comment puis-je vous aider ?
+          </div>
+        </div>
+      </main>
+
+      <!-- ── ZONE DE SAISIE ─────────────────────── -->
+      <footer class="chat-input-area">
+        <div class="loader" id="loader" style="display: none">
+          <span></span><span></span><span></span>
+        </div>
+
+        <div class="input-row">
+          <textarea
+            id="userInput"
+            placeholder="Tapez votre message..."
+            rows="1"
+            aria-label="Message"
+          ></textarea>
+          <button id="sendBtn" aria-label="Envoyer">Envoyer ➤</button>
+        </div>
+      </footer>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
