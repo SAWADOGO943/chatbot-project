@@ -1,5 +1,14 @@
 fastapi
 uvicorn[standard]
-httpx
+python-multipart
 python-dotenv
+requests
+
+langchain
+langchain-community
+langchain-google-genai
+langchain-chroma
+
 google-generativeai
+
+chromadb
