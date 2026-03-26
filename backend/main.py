@@ -100,57 +100,77 @@ async def chat(request: ChatRequest):
 # ROUTES SEMAINE 2 — RAG
 # ══════════════════════════════════════════════════════════════════
 
+# Cet endpoint transforme vos documents (PDF, texte, etc.)
+#  en "nombres" (embeddings) pour qu'ils soient exploitables par l'IA.
+
 
 @app.post("/rag/index", response_model=IndexResponse)
 async def index_documents():
     """
-    Indexe tous les documents du dossier /documents.
-    À appeler après avoir ajouté/modifié des fichiers.
+    Déclenche le scan du dossier /documents et crée la base de données vectorielle.
     """
-
+    # Vérification de sécurité : s'assure que la classe RAGService a bien été instanciée au démarrage.
     if not rag_service:
         raise HTTPException(status_code=503, detail="RAGService non initialisé")
 
     try:
+        # Appel de la logique métier qui lit les fichiers et génère les vecteurs.
         result = rag_service.index_documents()
+        # Retourne un objet validé par Pydantic (IndexResponse).
         return IndexResponse(**result)
     except Exception as e:
+        # Capture toute erreur (fichier corrompu, échec API d'embedding) pour éviter un crash serveur.
         raise HTTPException(status_code=500, detail=f"Erreur d'indexation: {str(e)}")
+
+
+# 2. Endpoint de Requête (/rag/query)
+# C'est ici que l'utilisateur pose une question.
+# Le système cherche les passages pertinents dans les documents avant de générer une réponse.
 
 
 @app.post("/rag/query", response_model=RAGResponse)
 async def rag_query(request: RAGRequest):
     """
-    Pose une question au RAG.
-    Cherche dans les documents indexés et génère une réponse sourcée.
+    Recherche la réponse dans les documents indexés.
     """
-
+    # 1. Vérifie si le service existe.
     if not rag_service:
         raise HTTPException(status_code=503, detail="RAGService non initialisé")
 
+    # 2. Vérifie si des données ont été indexées (évite une recherche dans le vide).
     if not rag_service.is_ready():
         raise HTTPException(
             status_code=400,
             detail="Aucun document indexé. Appelez d'abord POST /rag/index",
         )
 
+    # 3. Validation de l'entrée utilisateur pour éviter les requêtes inutiles.
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="La question ne peut pas être vide")
 
     try:
+        # Appel asynchrone pour interroger le LLM et la base vectorielle.
         response = await rag_service.query(request.question)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur RAG: {str(e)}")
 
 
+# 3. Endpoint de Statut (/rag/status)
+# Indispensable pour le frontend (votre portfolio ou interface React) afin de savoir
+#  s'il faut afficher un bouton "Chercher" ou un avertissement.
+
+
 @app.get("/rag/status")
 async def rag_status():
-    """Vérifie si des documents sont indexés et prêts"""
-
+    """
+    Retourne l'état actuel de préparation du système RAG.
+    """
+    # Si le service n'est même pas configuré (clés API manquantes, etc.).
     if not rag_service:
         return {"ready": False, "message": "Service non initialisé"}
 
+    # Vérifie dynamiquement si la base vectorielle contient des données.
     return {
         "ready": rag_service.is_ready(),
         "message": "Documents indexés et prêts"
