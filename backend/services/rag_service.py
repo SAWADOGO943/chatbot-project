@@ -13,7 +13,7 @@ from langchain_community.document_loaders import (
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # Modèle d'embeddings Google (transforme texte → vecteurs)
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 # Base de données vectorielle locale persistante (Chroma)
 from langchain_chroma import Chroma
