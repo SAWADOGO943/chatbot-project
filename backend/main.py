@@ -32,7 +32,9 @@ app = FastAPI(
     version="2.0.0",
     lifespan=lifespan,
 )
-
+origins = [
+    "https://chatbot-project.vercel.app",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
