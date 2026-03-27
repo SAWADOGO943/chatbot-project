@@ -12,5 +12,9 @@ langchain-chroma
 google-generativeai
 
 chromadb
-sentence-transformers
-langchain-huggingface
+
+
+
+
+httpx
+
