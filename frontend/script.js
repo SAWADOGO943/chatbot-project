@@ -3,12 +3,13 @@ const chatMessages = document.getElementById('chatMessages');
 const userInput    = document.getElementById('userInput');
 const sendBtn      = document.getElementById('sendBtn');
 const loader       = document.getElementById('loader');
+const API_URL = 'https://chatbot-project-n3q5.onrender.com/chat';
 
 // ── URLS DES ENDPOINTS ─────────────────────────────────────────
-const CHAT_URL    = 'http://localhost:8000/chat';
-const RAG_URL     = 'http://localhost:8000/rag/query';
-const INDEX_URL   = 'http://localhost:8000/rag/index';
-const STATUS_URL  = 'http://localhost:8000/rag/status';
+const CHAT_URL    = 'https://chatbot-project-n3q5.onrender.com/chat';
+const RAG_URL     = 'https://chatbot-project-n3q5.onrender.com/rag/query';
+const INDEX_URL   = 'https://chatbot-project-n3q5.onrender.com/rag/index';
+const STATUS_URL  = 'https://chatbot-project-n3q5.onrender.com/rag/status';
 
 // ── ÉTAT DE L'APPLICATION ──────────────────────────────────────
 let currentMode = 'chat';   // 'chat' ou 'rag'
