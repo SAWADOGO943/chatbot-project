@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from schemas.chat_schema import ChatRequest, ChatResponse
-from schemas.rag_schema import RAGRequest, RAGResponse, IndexResponse
+from schemas.rag_schema import RAGRequest, IndexResponse
 from services.gemini_service import call_gemini
 from services.rag_service import RAGService
 
