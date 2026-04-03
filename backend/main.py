@@ -16,26 +16,33 @@ from schemas.rag_schema import RAGRequest, IndexResponse
 from services.gemini_service import call_gemini
 from services.rag_service import RAGService
 
+from agents.text_analysis_agent import TextAnalysisAgent
+from schemas.agent_schema import AgentRequest, AgentResponse
+
 load_dotenv()  # Initialise le chargement des variables d'environnement
 
 # Déclaration globale du service RAG (sera instancié au démarrage)
 rag_service: RAGService = None
+text_agent: TextAnalysisAgent = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Gère ce qui se passe à l'allumage et à l'extinction du serveur"""
-    global rag_service
+    global rag_service, text_agent
+
     print("Démarrage du serveur...")
-    # Initialisation du moteur de recherche documentaire
+
     rag_service = RAGService()
-    # Vérification si des documents sont déjà présents dans la base vectorielle
     if rag_service.is_ready():
         print("RAGService prêt avec des documents déjà indexés")
     else:
         print("RAGService prêt — en attente d'indexation")
-    yield  # Ici, l'application tourne et répond aux requêtes
-    print("Arrêt du serveur")  # Code exécuté à la fermeture du script
+
+    text_agent = TextAnalysisAgent()
+    print("TextAnalysisAgent prêt")
+
+    yield
+    print("Arrêt du serveur")
 
 
 # Création de l'instance principale de l'API avec ses métadonnées
@@ -128,4 +135,48 @@ async def rag_status():
         "message": "Documents indexés et prêts"
         if rag_service.is_ready()
         else "Aucun document indexé — utilisez POST /rag/index",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+# ROUTES SEMAINE 13 — Agent IA
+# ══════════════════════════════════════════════════════════════════
+
+
+@app.post("/agent/analyze", response_model=AgentResponse)
+async def agent_analyze(request: AgentRequest):
+    """
+    Lance l'agent d'analyse de texte.
+    L'agent planifie, exécute et observe son propre travail.
+    Le raisonnement complet est retourné dans la réponse.
+    """
+    if not text_agent:
+        raise HTTPException(status_code=503, detail="Agent non initialisé")
+
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Le texte ne peut pas être vide")
+
+    if len(request.text) > 5000:
+        raise HTTPException(
+            status_code=400, detail="Texte trop long. Maximum 5000 caractères."
+        )
+
+    try:
+        response = await text_agent.run(request.text, request.task)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
+
+
+@app.get("/agent/status")
+async def agent_status():
+    """Vérifie si l'agent est prêt et liste ses outils"""
+    return {
+        "ready": text_agent is not None,
+        "agent": "TextAnalysisAgent",
+        "tools_available": [
+            "analyser_sentiment",
+            "extraire_themes",
+            "evaluer_complexite",
+        ],
     }

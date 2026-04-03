@@ -12,9 +12,5 @@ langchain-chroma
 google-generativeai
 
 chromadb
-
-
-
-
 httpx
 
