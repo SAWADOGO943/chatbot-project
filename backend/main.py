@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Chatbot IA + RAG API",
     description="Backend d'un chatbot fullstack avec mémoire documentaire",
-    version="2.0.0",
+    version="2.5.0",
     lifespan=lifespan,  # Lie le cycle de vie défini plus haut
 )
 

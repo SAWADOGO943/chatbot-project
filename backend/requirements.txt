@@ -14,3 +14,6 @@ google-generativeai
 chromadb
 httpx
 
+apscheduler
+beautifulsoup4
+resend
