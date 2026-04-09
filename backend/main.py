@@ -1,90 +1,113 @@
-from contextlib import (
-    asynccontextmanager,
-)  # Pour gérer le cycle de vie de l'application (start/stop)
-from fastapi import (
-    FastAPI,
-    HTTPException,
-)  # Le framework web et la gestion des erreurs HTTP
-from fastapi.middleware.cors import (
-    CORSMiddleware,
-)  # Pour autoriser les requêtes venant d'autres domaines (Frontend)
-from dotenv import load_dotenv  # Pour charger les variables secrètes (.env)
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
-# Importation des modèles de données (schemas) et des logiques métiers (services)
+# Scheduler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+
+# Schemas
 from schemas.chat_schema import ChatRequest, ChatResponse
-from schemas.rag_schema import RAGRequest, IndexResponse
+from schemas.rag_schema import RAGRequest, RAGResponse, IndexResponse
+from schemas.agent_schema import AgentRequest, AgentResponse
+from schemas.news_schema import AgentRunResult
+
+# Services et agents
 from services.gemini_service import call_gemini
 from services.rag_service import RAGService
-
 from agents.text_analysis_agent import TextAnalysisAgent
-from schemas.agent_schema import AgentRequest, AgentResponse
+from agents.news_scraper_agent import NewsScraperAgent
 
-load_dotenv()  # Initialise le chargement des variables d'environnement
+load_dotenv()
 
-# Déclaration globale du service RAG (sera instancié au démarrage)
+# ── VARIABLES GLOBALES ─────────────────────────────────────────────
 rag_service: RAGService = None
 text_agent: TextAnalysisAgent = None
+news_agent: NewsScraperAgent = None
+scheduler: AsyncIOScheduler = None
 
 
+# ── LIFESPAN ───────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global rag_service, text_agent
+    global rag_service, text_agent, news_agent, scheduler
 
     print("Démarrage du serveur...")
 
+    # Initialisation des services existants
     rag_service = RAGService()
     if rag_service.is_ready():
         print("RAGService prêt avec des documents déjà indexés")
     else:
         print("RAGService prêt — en attente d'indexation")
 
+    # Initialisation des agents
     text_agent = TextAnalysisAgent()
     print("TextAnalysisAgent prêt")
 
-    yield
-    print("Arrêt du serveur")
+    news_agent = NewsScraperAgent()
+    print("NewsScraperAgent prêt")
+
+    # Démarrage du scheduler
+    scheduler = AsyncIOScheduler()
+
+    # Planification : toutes les 12 heures
+    scheduler.add_job(
+        func=news_agent.run,
+        trigger=IntervalTrigger(hours=12),
+        id="news_agent_job",
+        name="Veille tech automatique",
+        replace_existing=True,
+    )
+
+    scheduler.start()
+    print("Scheduler démarré — Agent autonome actif toutes les 12 heures")
+
+    yield  # L'application tourne ici
+
+    # Arrêt propre du scheduler quand le serveur s'arrête
+    scheduler.shutdown()
+    print("Scheduler arrêté — Serveur en cours d'arrêt")
 
 
-# Création de l'instance principale de l'API avec ses métadonnées
+# ── APPLICATION ────────────────────────────────────────────────────
 app = FastAPI(
-    title="Chatbot IA + RAG API",
-    description="Backend d'un chatbot fullstack avec mémoire documentaire",
-    version="2.5.0",
-    lifespan=lifespan,  # Lie le cycle de vie défini plus haut
+    title="Chatbot IA + RAG + Agents API",
+    description="Backend fullstack avec agents autonomes",
+    version="3.0.0",
+    lifespan=lifespan,
 )
 
-
-# Configuration du CORS pour permettre au Frontend (Localhost ou Vercel) de communiquer avec l'API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5500",  # Live Server VS Code
-        "http://127.0.0.1:5500",  # Adresse locale alternative
-        "https://chatbot-project.vercel.app",  # URL de production
-    ],
-    allow_credentials=True,  # Autorise l'envoi de cookies/auth
-    allow_methods=["*"],  # Autorise GET, POST, PUT, DELETE, etc.
-    allow_headers=["*"],  # Autorise tous les headers (Content-Type, etc.)
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+
+# ══════════════════════════════════════════════════════════════════
+# ROUTES EXISTANTES — Chat et RAG (inchangées)
+# ══════════════════════════════════════════════════════════════════
 
 
 @app.get("/")
 async def root():
-    """Point d'entrée de test pour vérifier que l'API répond"""
     return {
         "status": "ok",
-        "message": "Chatbot API v2 is running",
+        "message": "Chatbot API v3 is running",
         "rag_ready": rag_service.is_ready() if rag_service else False,
+        "scheduler_running": scheduler.running if scheduler else False,
     }
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
-    """Endpoint pour une discussion simple avec l'IA sans contexte documentaire"""
     if not request.message.strip():
         raise HTTPException(status_code=400, detail="Le message ne peut pas être vide")
     try:
-        # Appel du service Gemini créé précédemment
         gemini_reply = await call_gemini(request.message)
         return ChatResponse(reply=gemini_reply)
     except Exception as e:
@@ -93,11 +116,9 @@ async def chat(request: ChatRequest):
 
 @app.post("/rag/index", response_model=IndexResponse)
 async def index_documents():
-    """Endpoint pour lire les fichiers locaux et les transformer en vecteurs mathématiques"""
     if not rag_service:
         raise HTTPException(status_code=503, detail="RAGService non initialisé")
     try:
-        # Déclenche l'indexation (embedding) des documents
         result = rag_service.index_documents()
         return IndexResponse(**result)
     except Exception as e:
@@ -106,19 +127,13 @@ async def index_documents():
 
 @app.post("/rag/query")
 async def rag_query(request: RAGRequest):
-    """Endpoint pour poser une question basée sur les documents indexés"""
     if not rag_service:
         raise HTTPException(status_code=503, detail="RAGService non initialisé")
-    # Sécurité : on ne peut pas requêter si la base de données est vide
     if not rag_service.is_ready():
-        raise HTTPException(
-            status_code=400,
-            detail="Aucun document indexé. Appelez d'abord POST /rag/index",
-        )
+        raise HTTPException(status_code=400, detail="Aucun document indexé")
     if not request.question.strip():
         raise HTTPException(status_code=400, detail="La question ne peut pas être vide")
     try:
-        # Recherche les morceaux de textes pertinents puis interroge l'IA
         response = await rag_service.query(request.question)
         return response
     except Exception as e:
@@ -127,7 +142,6 @@ async def rag_query(request: RAGRequest):
 
 @app.get("/rag/status")
 async def rag_status():
-    """Permet au Frontend de savoir si le bouton de chat 'RAG' doit être activé"""
     if not rag_service:
         return {"ready": False, "message": "Service non initialisé"}
     return {
@@ -139,28 +153,20 @@ async def rag_status():
 
 
 # ══════════════════════════════════════════════════════════════════
-# ROUTES SEMAINE 13 — Agent IA
+# ROUTES SEMAINE 13 — Agent d'analyse de texte
 # ══════════════════════════════════════════════════════════════════
 
 
 @app.post("/agent/analyze", response_model=AgentResponse)
 async def agent_analyze(request: AgentRequest):
-    """
-    Lance l'agent d'analyse de texte.
-    L'agent planifie, exécute et observe son propre travail.
-    Le raisonnement complet est retourné dans la réponse.
-    """
     if not text_agent:
         raise HTTPException(status_code=503, detail="Agent non initialisé")
-
     if not request.text.strip():
         raise HTTPException(status_code=400, detail="Le texte ne peut pas être vide")
-
     if len(request.text) > 5000:
         raise HTTPException(
             status_code=400, detail="Texte trop long. Maximum 5000 caractères."
         )
-
     try:
         response = await text_agent.run(request.text, request.task)
         return response
@@ -170,7 +176,6 @@ async def agent_analyze(request: AgentRequest):
 
 @app.get("/agent/status")
 async def agent_status():
-    """Vérifie si l'agent est prêt et liste ses outils"""
     return {
         "ready": text_agent is not None,
         "agent": "TextAnalysisAgent",
@@ -179,4 +184,42 @@ async def agent_status():
             "extraire_themes",
             "evaluer_complexite",
         ],
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+# ROUTES SEMAINE 14 — Agent autonome de veille tech
+# ══════════════════════════════════════════════════════════════════
+
+
+@app.post("/news-agent/run", response_model=AgentRunResult)
+async def news_agent_run():
+    """
+    Déclenche l'agent manuellement.
+    Utile pour tester sans attendre 12 heures.
+    En production, l'agent se déclenche seul toutes les 12 heures.
+    """
+    if not news_agent:
+        raise HTTPException(status_code=503, detail="NewsAgent non initialisé")
+    try:
+        result = await news_agent.run()
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
+
+
+@app.get("/news-agent/status")
+async def news_agent_status():
+    """Retourne l'état de l'agent et du scheduler"""
+    next_run = None
+    if scheduler and scheduler.running:
+        job = scheduler.get_job("news_agent_job")
+        if job and job.next_run_time:
+            next_run = job.next_run_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "agent_ready": news_agent is not None,
+        "scheduler_running": scheduler.running if scheduler else False,
+        "interval": "toutes les 12 heures",
+        "next_run": next_run,
     }
