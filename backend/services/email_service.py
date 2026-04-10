@@ -3,7 +3,6 @@ import resend  # Importation du SDK de Resend pour l'envoi d'emails
 from schemas.news_schema import (
     NewsReport,
 )  # Importation de la classe de données NewsReport
-from datetime import datetime  # Importation de la gestion des dates
 
 
 def init_resend():
