@@ -153,38 +153,34 @@ def build_email_html(report: NewsReport) -> str:
 async def send_news_report(report: NewsReport) -> bool:
     """
     Envoie le rapport par email via Resend.
-    Retourne True si l'envoi a réussi, False sinon.
     """
-    try:  # Début du bloc de surveillance des erreurs
-        init_resend()  # Appel de l'initialisation de la clé API
+    try:
+        init_resend()
 
-        email_to = os.getenv(
-            "EMAIL_TO"
-        )  # Récupération du destinataire depuis l'environnement
-        if not email_to:  # Vérification du destinataire
-            raise ValueError(
-                "EMAIL_TO manquant dans .env"
-            )  # Erreur si le destinataire est absent
+        email_to = os.getenv("EMAIL_TO")
+        # On récupère l'expéditeur depuis le .env ou on utilise une valeur par défaut propre
+        email_from = os.getenv("EMAIL_FROM", "onboarding@resend.dev")
 
-        html_content = build_email_html(
-            report
-        )  # Appel de la fonction de création du HTML
+        if not email_to:
+            raise ValueError("EMAIL_TO manquant dans .env")
 
-        params = resend.Emails.SendParams(
-            from_="Agent IA <onboarding@resend.dev>",  # Configuration de l'expéditeur (email par défaut Resend)
-            to=[email_to],  # Configuration du destinataire
-            subject=f"Rapport Tech IA — {report.generated_at}",  # Création de l'objet de l'email
-            html=html_content,  # Injection du corps de l'email généré
-        )  # Préparation des paramètres d'envoi
+        html_content = build_email_html(report)
 
-        email = resend.Emails.send(params)  # Exécution de l'envoi de l'email
-        print(
-            f"Email envoyé avec succès — ID : {email['id']}"
-        )  # Notification de succès dans la console
-        return True  # Retourne vrai en cas de succès
+        # Utilisation d'un dictionnaire pour les paramètres
+        # Cela évite les soucis avec le mot-clé 'from' ou 'from_'
+        params = {
+            "from": f"Agent IA <{email_from}>",
+            "to": [email_to],
+            "subject": f"Rapport Tech IA — {report.generated_at}",
+            "html": html_content,
+        }
 
-    except Exception as e:  # Capture de toute erreur survenue pendant le processus
-        print(
-            f"Erreur envoi email : {e}"
-        )  # Affichage du message d'erreur dans la console
-        return False  # Retourne faux en cas d'échec
+        # Envoi via la méthode send
+        email = resend.Emails.send(params)
+
+        print(f"Email envoyé avec succès — ID : {email.get('id')}")
+        return True
+
+    except Exception as e:
+        print(f"Erreur envoi email : {e}")
+        return False
