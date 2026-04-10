@@ -9,7 +9,7 @@ langchain-community
 langchain-google-genai
 langchain-chroma
 
-google-generativeai
+google-genai
 
 chromadb
 httpx
@@ -17,3 +17,4 @@ httpx
 apscheduler
 beautifulsoup4
 resend
+duckduckgo-search
