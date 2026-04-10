@@ -9,7 +9,7 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 # Schemas
 from schemas.chat_schema import ChatRequest, ChatResponse
-from schemas.rag_schema import RAGRequest, IndexResponse
+from schemas.rag_schema import RAGRequest, RAGResponse, IndexResponse
 from schemas.agent_schema import AgentRequest, AgentResponse
 from schemas.news_schema import AgentRunResult
 

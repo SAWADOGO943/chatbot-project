@@ -3,6 +3,9 @@ from agents.base_agent import BaseAgent
 from services.scraper_service import scrape_tech_news
 from services.email_service import send_news_report
 from schemas.news_schema import NewsReport, AgentRunResult
+from typing import List
+import google.generativeai as genai
+from duckduckgo_search import DDGS
 
 
 class NewsScraperAgent(BaseAgent):
