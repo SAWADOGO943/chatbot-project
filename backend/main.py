@@ -55,14 +55,14 @@ async def lifespan(app: FastAPI):
     # Planification : toutes les 12 heures
     scheduler.add_job(
         func=news_agent.run,
-        trigger=IntervalTrigger(hours=12),
+        trigger=IntervalTrigger(minutes=5),
         id="news_agent_job",
         name="Veille tech automatique",
         replace_existing=True,
     )
 
     scheduler.start()
-    print("Scheduler démarré — Agent autonome actif toutes les 12 heures")
+    print("Scheduler démarré — Agent autonome actif toutes les 5 minutes")
 
     yield  # L'application tourne ici
 
