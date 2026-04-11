@@ -48,14 +48,14 @@ async def lifespan(app: FastAPI):
     # L'AsyncIOScheduler s'occupe de l'await automatiquement
     scheduler.add_job(
         func=news_agent.run, 
-        trigger=IntervalTrigger(minutes=5),
+        trigger=IntervalTrigger(hours=12),
         id="news_agent_job",
         name="Veille tech automatique",
         replace_existing=True,
     )
 
     scheduler.start()
-    print("⏰ Scheduler démarré — Agent actif toutes les 5 minutes")
+    print("⏰ Scheduler démarré — Agent actif toutes les 12 heures")
 
     yield  # L'application tourne ici
 
