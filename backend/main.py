@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.start()
-    print("⏰ Scheduler démarré — Agent actif toutes les 12 heures")
+    print("⏰ Scheduler démarré — Agent actif toutes les 5 minutes")
 
     yield  # L'application tourne ici
 
