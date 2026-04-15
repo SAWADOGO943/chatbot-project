@@ -47,8 +47,8 @@ async def lifespan(app: FastAPI):
     # Planification : Correction ICI -> On passe la fonction sans l'appeler
     # L'AsyncIOScheduler s'occupe de l'await automatiquement
     scheduler.add_job(
-        func=news_agent.run, 
-        trigger=IntervalTrigger(hours=12),
+        func=news_agent.run,
+        trigger=IntervalTrigger(minutes=5),
         id="news_agent_job",
         name="Veille tech automatique",
         replace_existing=True,
@@ -83,6 +83,7 @@ app.add_middleware(
 
 # ── ROUTES ─────────────────────────────────────────────────────────
 
+
 @app.get("/")
 async def root():
     return {
@@ -91,6 +92,7 @@ async def root():
         "rag_ready": rag_service.is_ready() if rag_service else False,
         "scheduler_running": scheduler.running if scheduler else False,
     }
+
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -102,26 +104,31 @@ async def chat(request: ChatRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {str(e)}")
 
+
 @app.post("/rag/index", response_model=IndexResponse)
 async def index_documents():
     if not rag_service:
         raise HTTPException(status_code=503, detail="RAGService non initialisé")
     try:
         # Assure-toi que cette méthode est synchrone ou ajoute 'await' si elle est async
-        result = rag_service.index_documents() 
+        result = rag_service.index_documents()
         return IndexResponse(**result)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur d'indexation: {str(e)}")
 
+
 @app.post("/rag/query")
 async def rag_query(request: RAGRequest):
     if not rag_service or not rag_service.is_ready():
-        raise HTTPException(status_code=400, detail="RAG non prêt ou aucun document indexé")
+        raise HTTPException(
+            status_code=400, detail="RAG non prêt ou aucun document indexé"
+        )
     try:
         response = await rag_service.query(request.question)
         return response
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur RAG: {str(e)}")
+
 
 @app.post("/agent/analyze", response_model=AgentResponse)
 async def agent_analyze(request: AgentRequest):
@@ -133,6 +140,7 @@ async def agent_analyze(request: AgentRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
 
+
 @app.post("/news-agent/run", response_model=AgentRunResult)
 async def news_agent_run():
     if not news_agent:
@@ -141,6 +149,7 @@ async def news_agent_run():
         return await news_agent.run()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
+
 
 @app.get("/news-agent/status")
 async def news_agent_status():
@@ -156,6 +165,7 @@ async def news_agent_status():
         "next_run": next_run,
     }
 
+
 # IMPORTANT : Ne pas mettre uvicorn.run() ici pour un déploiement Render.
-# Utilise la "Start Command" sur Render : 
+# Utilise la "Start Command" sur Render :
 # uvicorn main:app --host 0.0.0.0 --port $PORT
