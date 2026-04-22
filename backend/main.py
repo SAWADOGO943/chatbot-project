@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
         scheduler = AsyncIOScheduler()
         scheduler.add_job(
             func=news_agent.run,
-            trigger=IntervalTrigger(minutes=5),
+            trigger=IntervalTrigger(hours=3),
             id="news_agent_job",
             name="Veille tech automatique",
             replace_existing=True,
