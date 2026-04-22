@@ -34,7 +34,14 @@ scheduler = None
 async def lifespan(app: FastAPI):
     global rag_service, text_agent, news_agent, scheduler
 
-    print("🚀 Démarrage du serveur...")
+    # Utilisez des blocs try/except ici pour que le serveur démarre
+    # même si un service (comme le RAG) met du temps à charger
+    try:
+        rag_service = RAGService()
+        news_agent = NewsScraperAgent()
+        # ... reste du code
+    except Exception as e:
+        print(f"⚠️ Erreur au démarrage : {e}")
 
     # Initialisation des services
     rag_service = RAGService()
