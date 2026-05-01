@@ -17,10 +17,20 @@ from services.gemini_service import call_gemini
 from services.rag_service import RAGService
 from agents.text_analysis_agent import TextAnalysisAgent
 from agents.news_scraper_agent import NewsScraperAgent
+from agents.memory_agent import MemoryAgent
+from schemas.memory_schema import MemoryChatRequest, MemoryChatResponse, MemoryEntry
+from services.memory_service import (
+    list_sessions,
+    get_session,
+    clear_session,
+    get_long_term_memory,
+    save_to_long_term,
+)
+from typing import List
 
 # Chargement des variables d'environnement
 load_dotenv()
-
+memory_agent: MemoryAgent = None
 # ── VARIABLES GLOBALES ─────────────────────────────────────────────
 rag_service = None
 text_agent = None
@@ -152,3 +162,100 @@ async def agent_analyze(request: AgentRequest):
         return await text_agent.run(request.text, request.task)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ══════════════════════════════════════════════════════════════════
+# ROUTES SEMAINE 15 — Agents avec mémoire
+# ══════════════════════════════════════════════════════════════════
+
+
+@app.post("/memory-agent/chat", response_model=MemoryChatResponse)
+async def memory_chat(request: MemoryChatRequest):
+    """
+    Chat avec mémoire court terme.
+    Envoie session_id=null pour démarrer une nouvelle session.
+    Réutilise le même session_id pour continuer une conversation.
+    """
+    if not memory_agent:
+        raise HTTPException(status_code=503, detail="MemoryAgent non initialisé")
+
+    if not request.message.strip():
+        raise HTTPException(status_code=400, detail="Le message ne peut pas être vide")
+
+    try:
+        response = await memory_agent.chat(
+            message=request.message,
+            session_id=request.session_id,
+        )
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
+
+
+@app.get("/memory-agent/sessions")
+async def list_active_sessions():
+    """Liste toutes les sessions de conversation actives"""
+    session_ids = list_sessions()
+    sessions_info = []
+    for sid in session_ids:
+        session = get_session(sid)
+        if session:
+            sessions_info.append(
+                {
+                    "session_id": sid,
+                    "created_at": session.created_at,
+                    "total_turns": session.total_turns,
+                }
+            )
+    return {"active_sessions": len(sessions_info), "sessions": sessions_info}
+
+
+@app.delete("/memory-agent/sessions/{session_id}")
+async def delete_session(session_id: str):
+    """Supprime une session de conversation"""
+    success = clear_session(session_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Session introuvable")
+    return {"message": f"Session {session_id} supprimée"}
+
+
+@app.get("/memory-agent/long-term", response_model=List[MemoryEntry])
+async def get_long_term(category: str = None, limit: int = 10):
+    """
+    Consulte la mémoire long terme.
+    Paramètre category : filtre par catégorie (tendance, rapport_news, fait_important)
+    """
+    entries = get_long_term_memory(category=category, limit=limit)
+    return entries
+
+
+@app.post("/memory-agent/long-term")
+async def add_to_long_term(
+    category: str, content: str, source: str = None, importance: int = 1
+):
+    """Ajoute manuellement une entrée en mémoire long terme"""
+    entry = save_to_long_term(
+        category=category,
+        content=content,
+        source=source,
+        importance=importance,
+    )
+    return {"message": "Entrée mémorisée", "entry": entry}
+
+
+@app.get("/memory-agent/status")
+async def memory_agent_status():
+    """Retourne l'état du MemoryAgent et des mémoires"""
+    import os
+
+    long_term_count = 0
+    if os.path.exists("memory_store.json"):
+        entries = get_long_term_memory(limit=1000)
+        long_term_count = len(entries)
+
+    return {
+        "agent_ready": memory_agent is not None,
+        "short_term_sessions": len(list_sessions()),
+        "long_term_entries": long_term_count,
+        "memory_file": "memory_store.json",
+    }

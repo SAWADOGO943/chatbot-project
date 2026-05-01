@@ -12,7 +12,6 @@ class NewsScraperAgent(BaseAgent):
     """
     Agent autonome de veille technologique.
     S'exécute automatiquement toutes les 12 heures.
-    Scrape les actus tech, les analyse avec Gemini, envoie un email.
     """
 
     def __init__(self):
@@ -22,40 +21,44 @@ class NewsScraperAgent(BaseAgent):
     def analyser_articles(self, articles_content: str) -> dict:
         """
         Envoie tous les articles à Gemini pour analyse globale.
-        Retourne un résumé et les tendances identifiées.
+        Enrichit l'analyse avec la mémoire long terme des rapports précédents.
         """
-        prompt = f"""Tu es un agent de veille technologique expert.
-Tu viens de scraper plusieurs articles tech sur internet.
-Analyse l'ensemble de ces articles et produis un rapport structuré.
+        # Récupérer la mémoire long terme
+        from services.memory_service import get_memory_context
 
-ARTICLES SCRAPÉS :
+        memory_context = get_memory_context(category="tendance", limit=5)
+
+        prompt = f"""Tu es un agent de veille technologique expert avec mémoire.
+Tu viens de scraper plusieurs articles tech sur internet.
+Avant d'analyser, consulte ce que tu as observé lors de tes analyses précédentes.
+
+{memory_context}
+
+ARTICLES SCRAPÉS AUJOURD'HUI :
 {articles_content}
 
 Produis ton analyse dans ce format EXACT — respecte les séparateurs :
 
 RÉSUMÉ_GLOBAL:
-[Synthèse factuelle et précise en 4 à 6 phrases]
+[Un résumé en 4 à 6 phrases. Compare avec tes observations passées si pertinent.]
 
 TENDANCES:
 - [Tendance 1]
 - [Tendance 2]
-- [Tendance 3]
 
 ANALYSE:
-[Signification pour le secteur tech en 2-3 phrases]"""
+[2 à 3 phrases sur la signification sur la durée.]"""
 
         try:
-            # Appel sécurisé au client Gemini (SDK v1.0)
             response = self.client.models.generate_content(
                 model=self.model_name, contents=prompt
             )
             text = response.text.strip()
         except Exception as e:
-            # Gestion de la saturation (Erreur 503)
             print(f"⚠️ ERREUR GEMINI (Analyse) : {e}")
             return {
-                "summary": "L'analyse détaillée est momentanément indisponible (serveurs saturés). Veuillez consulter les sources ci-dessous.",
-                "trends": ["Service IA saturé - Réessai au prochain cycle"],
+                "summary": "L'analyse est momentanément indisponible.",
+                "trends": ["Service IA saturé"],
             }
 
         # --- Logique de Parsing ---
@@ -70,7 +73,6 @@ ANALYSE:
             parts = text.split("TENDANCES:")
             if len(parts) > 1:
                 trends_part = parts[1].split("ANALYSE:")[0].strip()
-                # Nettoyage propre des lignes de tendances
                 trends = [
                     line.strip("- ").strip()
                     for line in trends_part.split("\n")
@@ -90,76 +92,110 @@ ANALYSE:
             "trends": trends or ["Analyse des tendances indisponible"],
         }
 
-    async def run(self) -> AgentRunResult:
-        """
-        Boucle principale de l'agent autonome.
-        """
-        print(f"\n{'=' * 60}")
-        print(f"AGENT AUTONOME DÉMARRÉ")
-        print(f"Heure : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'=' * 60}\n")
 
-        try:
-            # ── ÉTAPE 1 : COLLECTE ET SCRAPING ──────────────────────────
-            print("Etape 1 — Collecte et scraping des articles...")
-            articles = await scrape_tech_news(max_articles=5)
+async def run(self) -> AgentRunResult:
+    """
+    Boucle principale de l'agent autonome.
+    Collecte → Analyse (avec mémoire) → Sauvegarde → Email.
+    """
+    print(f"\n{'=' * 60}")
+    print(f"AGENT AUTONOME DÉMARRÉ")
+    print(f"Heure : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"{'=' * 60}\n")
 
-            if not articles:
-                print("Aucun article trouvé — abandon")
-                return AgentRunResult(
-                    success=False,
-                    message="Aucun article trouvé lors du scraping",
-                    error="scraping_failed",
-                )
+    try:
+        # ── ÉTAPE 1 : COLLECTE ET SCRAPING ──────────────────────────
+        print("Etape 1 — Collecte et scraping des articles...")
+        articles = await scrape_tech_news(max_articles=5)
 
-            print(f"{len(articles)} articles collectés avec succès")
-
-            # ── ÉTAPE 2 : ANALYSE AVEC GEMINI ───────────────────────────
-            print("\nEtape 2 — Analyse avec Gemini...")
-            articles_content = "".join(
-                [
-                    f"\n--- Article {i} ---\nTitre: {a.title}\nContenu: {a.content[:1500]}\n"
-                    for i, a in enumerate(articles, 1)
-                ]
-            )
-
-            analysis = self.analyser_articles(articles_content)
-            print(f"Analyse terminée — {len(analysis['trends'])} tendances identifiées")
-
-            # ── ÉTAPE 3 : CONSTRUCTION DU RAPPORT ───────────────────────
-            report = NewsReport(
-                generated_at=datetime.now().strftime("%d/%m/%Y à %H:%M"),
-                articles_found=len(articles),
-                articles_analyzed=len(articles),
-                summary=analysis["summary"],
-                top_articles=articles,
-                key_trends=analysis["trends"],
-            )
-
-            # ── ÉTAPE 4 : ENVOI DE L'EMAIL ──────────────────────────────
-            print("\nEtape 4 — Envoi de l'email...")
-            email_sent = await send_news_report(report)
-
-            status_msg = (
-                "envoyé avec succès"
-                if email_sent
-                else "non envoyé (erreur service email)"
-            )
-
-            print(f"\n{'=' * 60}")
-            print("AGENT AUTONOME TERMINÉ")
-            print(f"{'=' * 60}\n")
-
-            return AgentRunResult(
-                success=True,
-                message=f"Rapport généré et email {status_msg}",
-                report=report,
-            )
-
-        except Exception as e:
-            print(f"\nERREUR CRITIQUE AGENT : {e}")
+        if not articles:
+            print("Aucun article trouvé — abandon")
             return AgentRunResult(
                 success=False,
-                message="Erreur fatale lors de l'exécution",
-                error=str(e),
+                message="Aucun article trouvé lors du scraping",
+                error="scraping_failed",
             )
+
+        print(f"{len(articles)} articles collectés avec succès")
+
+        # ── ÉTAPE 2 : ANALYSE AVEC GEMINI ET MÉMOIRE ────────────────
+        print("\nEtape 2 — Analyse avec Gemini et mémoire long terme...")
+
+        articles_content = ""
+        for i, article in enumerate(articles, start=1):
+            articles_content += f"""
+--- Article {i} ---
+Titre : {article.title}
+Source : {article.source}
+URL : {article.url}
+Contenu :
+{article.content[:1500]}
+
+"""
+
+        analysis = self.analyser_articles(articles_content)
+        print(f"Analyse terminée — {len(analysis['trends'])} tendances identifiées")
+
+        # ── ÉTAPE 3 : SAUVEGARDE EN MÉMOIRE LONG TERME ──────────────
+        print("\nEtape 3 — Sauvegarde en mémoire long terme...")
+        from services.memory_service import save_to_long_term
+
+        # Sauvegarder chaque tendance identifiée
+        for trend in analysis["trends"]:
+            save_to_long_term(
+                category="tendance",
+                content=trend,
+                source="NewsScraperAgent",
+                importance=2,
+            )
+
+        # Sauvegarder le résumé global du rapport
+        save_to_long_term(
+            category="rapport_news",
+            content=analysis["summary"][:500],
+            source=f"Rapport du {datetime.now().strftime('%d/%m/%Y')}",
+            importance=3,
+        )
+
+        print(f"Mémoire mise à jour — {len(analysis['trends'])} tendances sauvegardées")
+
+        # ── ÉTAPE 4 : CONSTRUCTION DU RAPPORT ───────────────────────
+        print("\nEtape 4 — Construction du rapport...")
+
+        report = NewsReport(
+            generated_at=datetime.now().strftime("%d/%m/%Y à %H:%M"),
+            articles_found=len(articles),
+            articles_analyzed=len(articles),
+            summary=analysis["summary"],
+            top_articles=articles,
+            key_trends=analysis["trends"],
+        )
+
+        print("Rapport construit")
+
+        # ── ÉTAPE 5 : ENVOI DE L'EMAIL ──────────────────────────────
+        print("\nEtape 5 — Envoi de l'email...")
+        email_sent = await send_news_report(report)
+
+        if email_sent:
+            print("Email envoyé avec succès")
+        else:
+            print("Echec de l'envoi d'email")
+
+        print(f"\n{'=' * 60}")
+        print("AGENT AUTONOME TERMINÉ")
+        print(f"{'=' * 60}\n")
+
+        return AgentRunResult(
+            success=True,
+            message=f"Rapport généré et email {'envoyé' if email_sent else 'non envoyé'}",
+            report=report,
+        )
+
+    except Exception as e:
+        print(f"\nERREUR AGENT : {e}")
+        return AgentRunResult(
+            success=False,
+            message="Erreur lors de l'exécution de l'agent",
+            error=str(e),
+        )
