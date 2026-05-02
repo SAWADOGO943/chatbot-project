@@ -43,7 +43,7 @@ scheduler: AsyncIOScheduler = None
 # ── LIFESPAN ───────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global rag_service, text_agent, news_agent, scheduler
+    global rag_service, text_agent, news_agent, scheduler, memory_agent
 
     print("Démarrage du serveur...")
 
