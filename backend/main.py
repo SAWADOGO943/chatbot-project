@@ -60,6 +60,8 @@ async def lifespan(app: FastAPI):
 
     memory_agent = MemoryAgent()
     print("MemoryAgent prêt")
+    news_agent = NewsScraperAgent()
+    print("NewsScraperAgent prêt")
 
     # Démarrage du scheduler
     scheduler = AsyncIOScheduler()
