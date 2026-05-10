@@ -3,16 +3,17 @@ const chatMessages = document.getElementById('chatMessages');
 const userInput    = document.getElementById('userInput');
 const sendBtn      = document.getElementById('sendBtn');
 const loader       = document.getElementById('loader');
-const API_URL = 'https://chatbot-project-n3q5.onrender.com/chat';
+const API_URL = 'http://localhost:8001/memory-agent/chat';
 
 // ── URLS DES ENDPOINTS ─────────────────────────────────────────
-const CHAT_URL    = 'https://chatbot-project-n3q5.onrender.com/chat';
-const RAG_URL     = 'https://chatbot-project-n3q5.onrender.com/rag/query';
-const INDEX_URL   = 'https://chatbot-project-n3q5.onrender.com/rag/index';
-const STATUS_URL  = 'https://chatbot-project-n3q5.onrender.com/rag/status';
+const CHAT_URL    = 'http://localhost:8001/memory-agent/chat';
+const RAG_URL     = 'http://localhost:8001/rag/query';
+const INDEX_URL   = 'http://localhost:8001/rag/index';
+const STATUS_URL  = 'http://localhost:8001/rag/status';
 
 // ── ÉTAT DE L'APPLICATION ──────────────────────────────────────
 let currentMode = 'chat';   // 'chat' ou 'rag'
+let sessionId   = null;     // ID de session mémoire (null = nouvelle session)
 
 // ── INITIALISATION ─────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
@@ -120,13 +121,13 @@ async function sendMessage() {
     }
 }
 
-// ── MODE CHAT (Semaine 1 — inchangé) ──────────────────────────
+// ── MODE CHAT avec mémoire (/memory-agent/chat) ───────────────
 async function sendChatMessage(text) {
     try {
         const response = await fetch(CHAT_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text })
+            body: JSON.stringify({ message: text, session_id: sessionId })
         });
 
         if (!response.ok) {
@@ -135,7 +136,16 @@ async function sendChatMessage(text) {
         }
 
         const data = await response.json();
+
+        // ── Sauvegarder le session_id pour les prochains messages ──
+        sessionId = data.session_id;
+
         appendMessage(data.reply, 'bot');
+
+        // Indicateur discret de mémoire active
+        if (data.turn_number > 1) {
+            appendMemoryBadge(data.turn_number, data.memory_used);
+        }
 
     } catch (error) {
         appendMessage(`❌ Erreur Chat : ${error.message}`, 'bot');
@@ -170,7 +180,7 @@ async function sendRagMessage(question) {
 // AFFICHAGE DES MESSAGES
 // ══════════════════════════════════════════════════════════════
 
-// Fonction d'affichage standard (Semaine 1 — inchangée)
+// Fonction d'affichage standard
 function appendMessage(text, sender) {
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', `${sender}-message`);
@@ -181,6 +191,16 @@ function appendMessage(text, sender) {
 
     messageDiv.appendChild(bubble);
     chatMessages.appendChild(messageDiv);
+    scrollToBottom();
+}
+
+// Badge discret indiquant que la mémoire est active
+function appendMemoryBadge(turnNumber, memoryUsed) {
+    if (!memoryUsed) return;
+    const badge = document.createElement('div');
+    badge.classList.add('memory-badge');
+    badge.textContent = `🧠 Mémoire active — échange n°${turnNumber}`;
+    chatMessages.appendChild(badge);
     scrollToBottom();
 }
 

@@ -61,7 +61,7 @@ Réponds de manière précise, en cohérence avec le contexte de la conversation
 
         # ── ÉTAPE 4 : APPEL GEMINI AVEC CONTEXTE ────────────────────
         # On démarre un chat avec l'historique existant
-        chat = self.model.start_chat(history=history)
+        chat = self.client.chats.create(model=self.model_name, history=history)
 
         # On envoie le message (avec contexte système si nouvelle session)
         if is_new_session:

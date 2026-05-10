@@ -319,3 +319,25 @@ button#sendBtn:disabled {
     border-radius: 6px;
     border-left: 3px solid var(--primary);
 }
+
+/* ── BADGE MÉMOIRE ACTIVE ───────────────────────────────────────── */
+
+.memory-badge {
+    align-self: flex-start;
+    font-size: 0.72rem;
+    color: var(--primary);
+    background: rgba(108, 99, 255, 0.08);
+    border: 1px solid rgba(108, 99, 255, 0.2);
+    border-radius: 20px;
+    padding: 3px 10px;
+    margin-top: -8px;   /* colle sous la bulle du bot */
+    margin-left: 4px;
+    letter-spacing: 0.02em;
+    font-weight: 500;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+}

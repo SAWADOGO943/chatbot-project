@@ -60,7 +60,7 @@ def get_history_for_gemini(session_id: str) -> List[dict]:
         history.append(
             {
                 "role": turn.role,
-                "parts": [turn.content],
+                "parts": [{"text": turn.content}],
             }
         )
     return history
