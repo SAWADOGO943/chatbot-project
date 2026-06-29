@@ -22,21 +22,23 @@ class BaseAgent:
         self.model_name = self._select_model()
 
     def _select_model(self) -> str:
-        """Sélectionne le nom du modèle à utiliser."""
-        # On privilégie les versions 2.0 pour les agents
-        models_to_try = ["gemini-3.5-flash"]
+        """Sélectionne le modèle gemini-2.5-flash."""
+        target_model = "gemini-2.5-flash"
 
         try:
-            # On vérifie les modèles disponibles via le client
-            for m in self.client.models.list():
-                for candidate in models_to_try:
-                    if candidate in m.name:
-                        print(f"Modèle sélectionné : {candidate}")
-                        return candidate
+            # On vérifie si le modèle cible est bien disponible dans la liste
+            available_models = [m.name for m in self.client.models.list()]
+
+            # Recherche exacte ou partielle selon la structure de retour de l'API
+            if any(target_model in m for m in available_models):
+                print(f"Modèle sélectionné : {target_model}")
+                return target_model
+
         except Exception as e:
             print(f"Erreur lors du listage des modèles : {e}")
 
-        return "gemini-1.5-flash"  # Fallback sécurisé
+        # Fallback sécurisé
+        return target_model
 
     # ── OUTILS GÉNÉRIQUES ──────────────────────────────────────────
 
