@@ -1,289 +1,464 @@
-// ── SÉLECTION DES ÉLÉMENTS DU DOM ──────────────────────────────
-const chatMessages = document.getElementById('chatMessages');
-const userInput    = document.getElementById('userInput');
-const sendBtn      = document.getElementById('sendBtn');
-const loader       = document.getElementById('loader');
-const API_URL = 'https://chatbot-project-n3q5.onrender.com/memory-agent/chat';
+// ── CONFIGURATION ───────────────────────────────────────────────────
+const API_URL = 'https://chatbot-project-n3q5.onrender.com'
+  //const API_URL = 'http://localhost:8000'
 
-// ── URLS DES ENDPOINTS ─────────────────────────────────────────
-const CHAT_URL    = 'https://chatbot-project-n3q5.onrender.com/memory-agent/chat';
-const RAG_URL     = 'https://chatbot-project-n3q5.onrender.com/rag/query';
-const INDEX_URL   = 'https://chatbot-project-n3q5.onrender.com/rag/index';
-const STATUS_URL  = 'https://chatbot-project-n3q5.onrender.com/rag/status';
 
-// ── ÉTAT DE L'APPLICATION ──────────────────────────────────────
-let currentMode = 'chat';   // 'chat' ou 'rag'
-let sessionId   = null;     // ID de session mémoire (null = nouvelle session)
+// ── ÉTAT DE L'APPLICATION ────────────────────────────────────────────
+let currentSessionId = null   // ID de la session active
+let isWaiting = false         // Empêche d'envoyer pendant qu'on attend
 
-// ── INITIALISATION ─────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', () => {
-    checkRagStatus();
-});
 
-// ══════════════════════════════════════════════════════════════
-// GESTION DES MODES (CHAT / RAG)
-// ══════════════════════════════════════════════════════════════
+// ── ÉLÉMENTS DU DOM ──────────────────────────────────────────────────
+const sessionsList     = document.getElementById('sessionsList')
+const messagesContainer = document.getElementById('messagesContainer')
+const userInput        = document.getElementById('userInput')
+const sendBtn          = document.getElementById('sendBtn')
+const btnNewChat       = document.getElementById('btnNewChat')
+const chatTitle        = document.getElementById('chatTitle')
 
-function switchMode(mode) {
-    currentMode = mode;
 
-    // Mise à jour des onglets
-    document.getElementById('tabChat').classList.toggle('active', mode === 'chat');
-    document.getElementById('tabRag').classList.toggle('active', mode === 'rag');
-
-    // Affichage/masquage du panneau RAG
-    document.getElementById('ragPanel').style.display = mode === 'rag' ? 'block' : 'none';
-
-    // Mise à jour du placeholder
-    userInput.placeholder = mode === 'rag'
-        ? 'Posez une question sur vos documents...'
-        : 'Tapez votre message...';
-
-    // Message de transition dans le chat
-    const modeMsg = mode === 'rag'
-        ? '📚 Mode RAG activé — Je vais chercher dans vos documents pour répondre.'
-        : '💬 Mode Chat activé — Je réponds sans base documentaire.';
-    appendMessage(modeMsg, 'bot');
-}
-
-// ── VÉRIFICATION DU STATUT RAG ─────────────────────────────────
-async function checkRagStatus() {
+// ══════════════════════════════════════════════════════════════════════
+// SIDEBAR — GESTION DES SESSIONS
+async function loadSessions() {
+    /**
+     * Charge toutes les sessions depuis le backend
+     * et les affiche dans la sidebar.
+     */
     try {
-        const response = await fetch(STATUS_URL);
-        const data = await response.json();
-        updateRagStatusUI(data.ready, data.message);
+        const response = await fetch(`${API_URL}/memory-agent/sessions`)
+        
+        // Vérifier si la réponse est OK
+        if (!response.ok) {
+            throw new Error(`Erreur HTTP: ${response.status}`)
+        }
+        
+        const data = await response.json()
+        
+        // Structure attendue du JSON (comme dans la capture) :
+        // {
+        //     "active_sessions": 3,
+        //     "sessions": [
+        //         {
+        //             "session_id": "abc123",
+        //             "created_at": "2025-01-15T18:30:00",
+        //             "total_turns": 4
+        //         }
+        //     ]
+        // }
+        
+        const sessions = data.sessions || []
+        const activeSessionsCount = data.active_sessions || 0
+        
+        console.log(`📊 ${activeSessionsCount} session(s) active(s) chargée(s)`)
+        console.log('📋 Détails des sessions :', sessions)
+
+        // Appel à renderSessions avec le tableau des sessions
+        renderSessions(sessions)
+        
     } catch (error) {
-        updateRagStatusUI(false, 'Backend non accessible');
+        console.error('❌ Erreur chargement sessions :', error)
+        // Optionnel : afficher un message d'erreur dans l'UI
+        // showErrorMessage('Impossible de charger les sessions')
     }
 }
 
-function updateRagStatusUI(isReady, message) {
-    const dot  = document.getElementById('statusDot');
-    const text = document.getElementById('statusText');
+function renderSessions(sessions) {
+    /**
+     * Affiche les sessions dans la sidebar.
+     * Les groupe par période : Aujourd'hui, Cette semaine, Plus ancien.
+     */
+    if (sessions.length === 0) {
+        sessionsList.innerHTML = '<p class="sessions-empty">Aucune conversation</p>'
+        return
+    }
 
-    dot.textContent  = isReady ? '🟢' : '🔴';
-    text.textContent = message;
+    // Grouper les sessions par période
+    const groups = groupSessionsByPeriod(sessions)
+    let html = ''
+
+    for (const [label, items] of Object.entries(groups)) {
+        if (items.length === 0) continue
+
+        html += `<div class="session-group-label">${label}</div>`
+
+        for (const session of items) {
+            const isActive = session.session_id === currentSessionId
+            const date = formatDate(session.created_at)
+            const turns = session.total_turns || 0
+
+            html += `
+                <div class="session-item ${isActive ? 'active' : ''}"
+                     data-id="${session.session_id}"
+                     onclick="selectSession('${session.session_id}')">
+                    <span class="session-item-title">
+                        Session du ${date}
+                    </span>
+                    <span class="session-item-meta">${turns} msg</span>
+                    <button class="session-item-delete"
+                            onclick="deleteSession(event, '${session.session_id}')"
+                            title="Supprimer">
+                        ✕
+                    </button>
+                </div>
+            `
+        }
+    }
+
+    sessionsList.innerHTML = html
 }
 
-// ── INDEXATION DES DOCUMENTS ──────────────────────────────────
-async function indexDocuments() {
-    const btn = document.getElementById('indexBtn');
-    btn.disabled     = true;
-    btn.textContent  = '⏳ Indexation en cours...';
+function groupSessionsByPeriod(sessions) {
+    /**
+     * Regroupe les sessions par période.
+     * Retourne un objet { "Aujourd'hui": [...], "Cette semaine": [...], ... }
+     */
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
 
-    try {
-        const response = await fetch(INDEX_URL, { method: 'POST' });
-        const data = await response.json();
+    const groups = {
+        "Aujourd'hui": [],
+        "Cette semaine": [],
+        "Plus ancien": [],
+    }
 
-        if (data.success) {
-            updateRagStatusUI(true, `✅ ${data.message}`);
+    for (const session of sessions) {
+        const date = new Date(session.created_at)
 
-            // Affiche le résumé d'indexation
-            const info = document.getElementById('ragInfo');
-            info.style.display = 'block';
-            info.textContent   = `📊 ${data.documents_indexed} chunks indexés et prêts`;
-
-            appendMessage(`✅ Indexation réussie ! ${data.message}`, 'bot');
+        if (date >= today) {
+            groups["Aujourd'hui"].push(session)
+        } else if (date >= weekAgo) {
+            groups["Cette semaine"].push(session)
         } else {
-            updateRagStatusUI(false, data.message);
-            appendMessage(`❌ Indexation échouée : ${data.message}`, 'bot');
+            groups["Plus ancien"].push(session)
+        }
+    }
+
+    return groups
+}
+
+async function selectSession(sessionId) {
+    /**
+     * Sélectionne une session et charge son historique.
+     * Appelé quand l'utilisateur clique sur une session dans la sidebar.
+     */
+    currentSessionId = sessionId
+
+    // Mettre à jour la sidebar visuellement
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === sessionId)
+    })
+
+    // Charger l'historique de cette session
+    await loadSessionHistory(sessionId)
+}
+
+async function loadSessionHistory(sessionId) {
+    /**
+     * Charge et affiche tous les messages d'une session.
+     */
+    try {
+        const response = await fetch(`${API_URL}/memory-agent/sessions/${sessionId}`)
+
+        if (!response.ok) {
+            console.error('Session introuvable')
+            return
         }
 
+        const data = await response.json()
+
+        // Vider la zone de chat
+        messagesContainer.innerHTML = ''
+
+        // Mettre à jour le titre
+        chatTitle.textContent = `Session du ${formatDate(data.created_at || new Date().toISOString())}`
+
+        // Afficher chaque message de l'historique
+        const history = data.history || []
+
+        if (history.length === 0) {
+            messagesContainer.innerHTML = `
+                <div class="welcome-message">
+                    <p>Conversation vide — envoyez un message pour commencer.</p>
+                </div>
+            `
+            return
+        }
+
+        for (const msg of history) {
+            // Le backend retourne role: 'user' ou 'assistant'
+            const role = msg.role === 'user' ? 'user' : 'agent'
+            appendMessage(role, msg.content)
+        }
+
+        scrollToBottom()
+
     } catch (error) {
-        appendMessage(`❌ Erreur : ${error.message}`, 'bot');
-    } finally {
-        btn.disabled    = false;
-        btn.textContent = '🔄 Indexer les documents';
+        console.error('Erreur chargement historique :', error)
     }
 }
 
-// ══════════════════════════════════════════════════════════════
-// ENVOI DES MESSAGES (logique principale)
-// ══════════════════════════════════════════════════════════════
+async function deleteSession(event, sessionId) {
+    /**
+     * Supprime une session après confirmation.
+     * event.stopPropagation() empêche de sélectionner la session en même temps.
+     */
+    event.stopPropagation()
+
+    if (!confirm('Supprimer cette conversation ?')) return
+
+    try {
+        await fetch(`${API_URL}/memory-agent/sessions/${sessionId}`, {
+            method: 'DELETE'
+        })
+
+        // Si c'était la session active, réinitialiser
+        if (currentSessionId === sessionId) {
+            currentSessionId = null
+            messagesContainer.innerHTML = `
+                <div class="welcome-message">
+                    <p>Conversation supprimée.</p>
+                    <p>Démarrez une nouvelle conversation.</p>
+                </div>
+            `
+            chatTitle.textContent = 'Nouvelle conversation'
+        }
+
+        // Rafraîchir la sidebar
+        await loadSessions()
+
+    } catch (error) {
+        console.error('Erreur suppression :', error)
+    }
+}
+
+function startNewChat() {
+    /**
+     * Réinitialise l'interface pour une nouvelle conversation.
+     * Ne crée pas de session en base — elle sera créée au premier message.
+     */
+    currentSessionId = null
+
+    // Désélectionner toutes les sessions dans la sidebar
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.remove('active')
+    })
+
+    // Réinitialiser la zone de chat
+    messagesContainer.innerHTML = `
+        <div class="welcome-message">
+            <p>Bonjour 👋 Je suis votre agent IA avec mémoire.</p>
+            <p>Je me souviens de nos conversations précédentes.</p>
+        </div>
+    `
+
+    chatTitle.textContent = 'Nouvelle conversation'
+    userInput.focus()
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// CHAT — ENVOI ET RÉCEPTION DES MESSAGES
+// ══════════════════════════════════════════════════════════════════════
 
 async function sendMessage() {
-    const userText = userInput.value.trim();
-    if (!userText) return;
+    /**
+     * Envoie le message au backend et affiche la réponse.
+     */
+    const message = userInput.value.trim()
+    if (!message || isWaiting) return
 
-    appendMessage(userText, 'user');
-    userInput.value = '';
-    userInput.style.height = 'auto';
-    setLoading(true);
+    // Vider la zone de saisie
+    userInput.value = ''
+    autoResizeTextarea()
+
+    // Supprimer le message de bienvenue s'il est encore là
+    const welcome = messagesContainer.querySelector('.welcome-message')
+    if (welcome) welcome.remove()
+
+    // Afficher le message utilisateur immédiatement
+    appendMessage('user', message)
+    scrollToBottom()
+
+    // Afficher "en train d'écrire..."
+    const typingId = appendTyping()
+
+    // Désactiver le bouton pendant l'attente
+    isWaiting = true
+    sendBtn.disabled = true
 
     try {
-        if (currentMode === 'chat') {
-            await sendChatMessage(userText);
-        } else {
-            await sendRagMessage(userText);
+        const response = await fetch(`${API_URL}/memory-agent/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message: message,
+                session_id: currentSessionId,  // null si nouvelle conversation
+            })
+        })
+
+        if (!response.ok) {
+            throw new Error(`Erreur serveur : ${response.status}`)
         }
+
+        const data = await response.json()
+
+        // Récupérer l'ID de session (important pour les nouvelles conversations)
+        if (!currentSessionId) {
+            currentSessionId = data.session_id
+            chatTitle.textContent = `Session du ${formatDate(new Date().toISOString())}`
+            // Rafraîchir la sidebar pour afficher la nouvelle session
+            await loadSessions()
+        }
+
+        // Supprimer le "en train d'écrire..." et afficher la vraie réponse
+        removeTyping(typingId)
+        appendMessage('agent', data.response)
+        scrollToBottom()
+
+    } catch (error) {
+        removeTyping(typingId)
+        appendMessage('agent', 'Une erreur est survenue. Veuillez réessayer.')
+        console.error('Erreur envoi message :', error)
     } finally {
-        setLoading(false);
+        isWaiting = false
+        sendBtn.disabled = false
+        userInput.focus()
     }
 }
 
-// ── MODE CHAT avec mémoire (/memory-agent/chat) ───────────────
-async function sendChatMessage(text) {
-    try {
-        const response = await fetch(CHAT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message: text, session_id: sessionId })
-        });
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || `Erreur ${response.status}`);
-        }
+// ══════════════════════════════════════════════════════════════════════
+// UTILITAIRES — AFFICHAGE
+// ══════════════════════════════════════════════════════════════════════
 
-        const data = await response.json();
+function appendMessage(role, content) {
+    /**
+     * Ajoute une bulle de message dans la zone de chat.
+     * role : 'user' ou 'agent'
+     */
+    const avatar = role === 'user' ? '👤' : '🤖'
 
-        // ── Sauvegarder le session_id pour les prochains messages ──
-        sessionId = data.session_id;
+    const div = document.createElement('div')
+    div.className = `message ${role}`
+    div.innerHTML = `
+        <div class="message-avatar">${avatar}</div>
+        <div class="message-bubble">${escapeHtml(content)}</div>
+    `
 
-        appendMessage(data.reply, 'bot');
-
-        // Indicateur discret de mémoire active
-        if (data.turn_number > 1) {
-            appendMemoryBadge(data.turn_number, data.memory_used);
-        }
-
-    } catch (error) {
-        appendMessage(`❌ Erreur Chat : ${error.message}`, 'bot');
-    }
+    messagesContainer.appendChild(div)
+    return div
 }
 
-// ── MODE RAG (Semaine 2) ──────────────────────────────────────
-async function sendRagMessage(question) {
-    try {
-        const response = await fetch(RAG_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ question: question })
-        });
+function appendTyping() {
+    /**
+     * Affiche un indicateur "en train d'écrire..."
+     * Retourne un ID unique pour pouvoir le supprimer ensuite.
+     */
+    const id = 'typing-' + Date.now()
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.detail || `Erreur ${response.status}`);
-        }
+    const div = document.createElement('div')
+    div.className = 'message agent message-typing'
+    div.id = id
+    div.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-bubble">En train d'écrire...</div>
+    `
 
-        const data = await response.json();
-
-        // Affiche la réponse avec les sources
-        appendRagMessage(data.answer, data.sources, data.chunks_used);
-
-    } catch (error) {
-        appendMessage(`❌ Erreur RAG : ${error.message}`, 'bot');
-    }
+    messagesContainer.appendChild(div)
+    scrollToBottom()
+    return id
 }
 
-// ══════════════════════════════════════════════════════════════
-// AFFICHAGE DES MESSAGES
-// ══════════════════════════════════════════════════════════════
-
-// Fonction d'affichage standard
-function appendMessage(text, sender) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', `${sender}-message`);
-
-    const bubble = document.createElement('div');
-    bubble.classList.add('message-bubble');
-    bubble.textContent = text;
-
-    messageDiv.appendChild(bubble);
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
+function removeTyping(id) {
+    /**
+     * Supprime l'indicateur "en train d'écrire..."
+     */
+    const el = document.getElementById(id)
+    if (el) el.remove()
 }
-
-// Badge discret indiquant que la mémoire est active
-function appendMemoryBadge(turnNumber, memoryUsed) {
-    if (!memoryUsed) return;
-    const badge = document.createElement('div');
-    badge.classList.add('memory-badge');
-    badge.textContent = `🧠 Mémoire active — échange n°${turnNumber}`;
-    chatMessages.appendChild(badge);
-    scrollToBottom();
-}
-
-// Fonction d'affichage RAG — avec sources citées
-function appendRagMessage(answer, sources, chunksUsed) {
-    const messageDiv = document.createElement('div');
-    messageDiv.classList.add('message', 'bot-message');
-
-    const bubble = document.createElement('div');
-    bubble.classList.add('message-bubble');
-
-    // Réponse principale
-    const answerText = document.createElement('div');
-    answerText.textContent = answer;
-    bubble.appendChild(answerText);
-
-    // Section sources (si des sources existent)
-    if (sources && sources.length > 0) {
-        const sourcesSection = document.createElement('div');
-        sourcesSection.classList.add('sources-section');
-
-        const title = document.createElement('div');
-        title.classList.add('sources-title');
-        title.textContent = `📎 Sources (${chunksUsed} extraits consultés)`;
-        sourcesSection.appendChild(title);
-
-        // Déduplique les sources par nom de fichier
-        const uniqueSources = [...new Set(sources.map(s => s.source))];
-        uniqueSources.forEach(sourceName => {
-            const chip = document.createElement('span');
-            chip.classList.add('source-chip');
-            chip.textContent = sourceName;
-            sourcesSection.appendChild(chip);
-        });
-
-        // Affiche le premier extrait à titre d'illustration
-        if (sources[0]) {
-            const excerpt = document.createElement('div');
-            excerpt.classList.add('source-excerpt');
-            excerpt.textContent = `"${sources[0].content}"`;
-            sourcesSection.appendChild(excerpt);
-        }
-
-        bubble.appendChild(sourcesSection);
-    }
-
-    messageDiv.appendChild(bubble);
-    chatMessages.appendChild(messageDiv);
-    scrollToBottom();
-}
-
-// ══════════════════════════════════════════════════════════════
-// UTILITAIRES (Semaine 1 — inchangés)
-// ══════════════════════════════════════════════════════════════
 
 function scrollToBottom() {
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    /**
+     * Fait défiler la zone de chat vers le bas.
+     * Appelé après chaque nouveau message.
+     */
+    messagesContainer.scrollTop = messagesContainer.scrollHeight
 }
 
-function setLoading(isLoading) {
-    if (isLoading) {
-        loader.style.display = 'flex';
-        sendBtn.disabled     = true;
-        userInput.disabled   = true;
-    } else {
-        loader.style.display = 'none';
-        sendBtn.disabled     = false;
-        userInput.disabled   = false;
-        userInput.focus();
+function escapeHtml(text) {
+    /**
+     * Sécurise le texte avant de l'injecter dans le DOM.
+     * Empêche les injections HTML/XSS.
+     */
+    const div = document.createElement('div')
+    div.appendChild(document.createTextNode(text))
+    return div.innerHTML
+}
+
+function formatDate(isoString) {
+    /**
+     * Formate une date ISO en format lisible.
+     * "2025-01-15T18:30:00" → "15/01 à 18h30"
+     */
+    try {
+        const date = new Date(isoString)
+        const day  = date.getDate().toString().padStart(2, '0')
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const hours = date.getHours().toString().padStart(2, '0')
+        const mins  = date.getMinutes().toString().padStart(2, '0')
+        return `${day}/${month} à ${hours}h${mins}`
+    } catch {
+        return 'date inconnue'
     }
 }
 
-// ── ÉVÉNEMENTS (inchangés) ─────────────────────────────────────
-sendBtn.addEventListener('click', sendMessage);
+function autoResizeTextarea() {
+    /**
+     * Ajuste automatiquement la hauteur du textarea
+     * selon le contenu (jusqu'à max-height défini en CSS).
+     */
+    userInput.style.height = 'auto'
+    userInput.style.height = userInput.scrollHeight + 'px'
+}
 
-userInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' && !event.shiftKey) {
-        event.preventDefault();
-        sendMessage();
+
+// ══════════════════════════════════════════════════════════════════════
+// ÉVÉNEMENTS
+// ══════════════════════════════════════════════════════════════════════
+
+// Bouton envoyer
+sendBtn.addEventListener('click', sendMessage)
+
+// Entrée clavier — Shift+Enter pour nouvelle ligne, Enter pour envoyer
+userInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        sendMessage()
     }
-});
+})
 
-userInput.addEventListener('input', () => {
-    userInput.style.height = 'auto';
-    userInput.style.height = userInput.scrollHeight + 'px';
-});
+// Redimensionner le textarea à la saisie
+userInput.addEventListener('input', autoResizeTextarea)
+
+// Bouton nouvelle conversation
+btnNewChat.addEventListener('click', startNewChat)
+
+
+// ══════════════════════════════════════════════════════════════════════
+// INITIALISATION AU CHARGEMENT DE LA PAGE
+// ══════════════════════════════════════════════════════════════════════
+
+async function init() {
+    /**
+     * Point d'entrée — s'exécute quand la page est chargée.
+     * Charge les sessions existantes et affiche la plus récente.
+     */
+    await loadSessions()
+
+    // Mettre le curseur dans le champ de saisie
+    userInput.focus()
+}
+
+// Lancer l'initialisation
+init()
