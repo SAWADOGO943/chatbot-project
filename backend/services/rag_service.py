@@ -19,7 +19,7 @@ class RAGService:
 
         # NOUVEAU : Initialisation via le Client
         self.client = genai.Client(api_key=api_key)
-        self.model_id = "gemini-2.5-flash"
+        self.model_id = "Gemini 2.5 Flash"
         self.documents = []  # Stockage en mémoire des chunks de texte
 
         if DOCUMENTS_DIR.exists():

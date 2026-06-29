@@ -1,4 +1,5 @@
 from agents.base_agent import BaseAgent
+import asyncio
 from services.memory_service import (
     create_session,
     get_session,
@@ -69,7 +70,8 @@ Réponds de manière précise, en cohérence avec le contexte de la conversation
         else:
             full_message = message
 
-        response = chat.send_message(full_message)
+        # Wrapper l'appel synchrone de Gemini pour ne pas bloquer
+        response = await asyncio.to_thread(chat.send_message, full_message)
         reply = response.text.strip()
 
         # ── ÉTAPE 5 : SAUVEGARDER LES NOUVEAUX ÉCHANGES ─────────────
@@ -86,7 +88,7 @@ Réponds de manière précise, en cohérence avec le contexte de la conversation
         )
 
         return MemoryChatResponse(
-            reply=reply,
+            response=reply,
             session_id=session_id,
             turn_number=turn_number,
             memory_used=memory_used,

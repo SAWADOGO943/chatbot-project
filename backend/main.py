@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from agents.lc_analysis_agent import LCAnalysisAgent
 
 # Scheduler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -38,12 +40,13 @@ text_agent: TextAnalysisAgent = None
 news_agent: NewsScraperAgent = None
 memory_agent: MemoryAgent = None
 scheduler: AsyncIOScheduler = None
+lc_agent: LCAnalysisAgent = None
 
 
 # ── LIFESPAN ───────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global rag_service, text_agent, news_agent, scheduler, memory_agent
+    global rag_service, text_agent, news_agent, scheduler, memory_agent, lc_agent
 
     print("Démarrage du serveur...")
 
@@ -62,6 +65,9 @@ async def lifespan(app: FastAPI):
     print("MemoryAgent prêt")
     news_agent = NewsScraperAgent()
     print("NewsScraperAgent prêt")
+
+    lc_agent = LCAnalysisAgent()
+    print("LCAnalysisAgent (LangChain) prêt")
 
     # Démarrage du scheduler
     scheduler = AsyncIOScheduler()
@@ -267,24 +273,6 @@ async def memory_chat(request: MemoryChatRequest):
         raise HTTPException(status_code=500, detail=f"Erreur agent: {str(e)}")
 
 
-@app.get("/memory-agent/sessions")
-async def list_active_sessions():
-    """Liste toutes les sessions de conversation actives"""
-    session_ids = list_sessions()
-    sessions_info = []
-    for sid in session_ids:
-        session = get_session(sid)
-        if session:
-            sessions_info.append(
-                {
-                    "session_id": sid,
-                    "created_at": session.created_at,
-                    "total_turns": session.total_turns,
-                }
-            )
-    return {"active_sessions": len(sessions_info), "sessions": sessions_info}
-
-
 @app.delete("/memory-agent/sessions/{session_id}")
 async def delete_session(session_id: str):
     """Supprime une session de conversation"""
@@ -292,6 +280,59 @@ async def delete_session(session_id: str):
     if not success:
         raise HTTPException(status_code=404, detail="Session introuvable")
     return {"message": f"Session {session_id} supprimée"}
+
+
+# A AJOUTER dans main.py si absent
+
+
+@app.get("/memory-agent/sessions")
+async def list_all_sessions():
+    """
+    Retourne toutes les sessions actives avec leurs informations.
+    Format attendu par le frontend :
+    {
+        "active_sessions": 3,
+        "sessions": [
+            {
+                "session_id": "abc123",
+                "created_at": "2025-01-15T18:30:00",
+                "total_turns": 4
+            }
+        ]
+    }
+    """
+    session_ids = list_sessions()
+    sessions_data = []
+
+    for session_id in session_ids:
+        session = get_session(session_id)
+        if session:
+            sessions_data.append(
+                {
+                    "session_id": session.session_id,
+                    "created_at": session.created_at,
+                    "total_turns": session.total_turns,
+                }
+            )
+
+    return {"active_sessions": len(sessions_data), "sessions": sessions_data}
+
+
+@app.get("/memory-agent/sessions/{session_id}")
+async def get_session_detail(session_id: str):
+    """Retourne l'historique d'une session spécifique"""
+    session = get_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "session_id": session.session_id,
+        "created_at": session.created_at,
+        "total_turns": session.total_turns,
+        "history": [
+            {"role": turn.role, "content": turn.content} for turn in session.turns
+        ],
+    }
 
 
 @app.get("/memory-agent/long-term", response_model=List[MemoryEntry])
@@ -333,4 +374,36 @@ async def memory_agent_status():
         "short_term_sessions": len(list_sessions()),
         "long_term_entries": long_term_count,
         "memory_file": "memory_store.json",
+    }
+
+
+# ══════════════════════════════════════════════════════════════════
+# ROUTES SEMAINE 17 — Agent LangChain
+# ══════════════════════════════════════════════════════════════════
+
+
+@app.post("/lc-agent/analyze", response_model=AgentResponse)
+async def lc_agent_analyze(request: AgentRequest):
+    """
+    Même analyse que /agent/analyze — mais avec LangChain.
+    Comparer les deux réponses : elles doivent être identiques.
+    """
+    if not lc_agent:
+        raise HTTPException(status_code=503, detail="LCAgent non initialisé")
+    if not request.text.strip():
+        raise HTTPException(status_code=400, detail="Le texte ne peut pas être vide")
+    try:
+        response = await lc_agent.run(request.text, request.task)
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur LCAgent: {str(e)}")
+
+
+@app.get("/lc-agent/status")
+async def lc_agent_status():
+    return {
+        "ready": lc_agent is not None,
+        "framework": "LangChain",
+        "model": "Gemini 2.5 Flash",
+        "chains": ["sentiment", "themes", "complexite", "synthese"],
     }

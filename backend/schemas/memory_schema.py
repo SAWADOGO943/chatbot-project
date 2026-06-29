@@ -30,7 +30,7 @@ class MemoryChatRequest(BaseModel):
 class MemoryChatResponse(BaseModel):
     """Réponse du chat avec mémoire"""
 
-    reply: str  # La réponse de l'agent
+    response: str  # La réponse de l'agent (changé de 'reply' à 'response')
     session_id: str  # L'ID de session (pour les appels suivants)
     turn_number: int  # Numéro de l'échange dans la session
     memory_used: bool  # True si l'agent a utilisé du contexte passé

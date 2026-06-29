@@ -1,6 +1,7 @@
 from agents.base_agent import BaseAgent
 from schemas.agent_schema import AgentResponse, AgentStep
 from typing import List
+import asyncio
 
 
 class TextAnalysisAgent(BaseAgent):
@@ -11,10 +12,9 @@ class TextAnalysisAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__()  # Initialise Gemini via BaseAgent
+        super().__init__()  # Initialise self.client et self.model_name
 
         # Dictionnaire des outils disponibles
-        # Clé = nom de l'outil, Valeur = la fonction à appeler
         self.tools = {
             "analyser_sentiment": self.analyser_sentiment,
             "extraire_themes": self.extraire_themes,
@@ -22,11 +22,6 @@ class TextAnalysisAgent(BaseAgent):
         }
 
     def planifier(self, texte: str, task: str) -> List[str]:
-        """
-        Phase PLANIFICATION — L'agent décide lui-même quelles étapes effectuer.
-        C'est ici que l'agent "réfléchit" avant d'agir.
-        Il reçoit la liste des outils disponibles et choisit lesquels utiliser.
-        """
         prompt = f"""Tu es un agent IA qui doit planifier une analyse de texte.
 Ta tâche : {task}
 
@@ -45,12 +40,11 @@ Format exact attendu :
 Texte à analyser (aperçu) :
 {texte[:500]}"""
 
-        response = self.model.generate_content(prompt)
-        plan_text = response.text.strip()
+        plan_text = self._call_gemini(prompt)
 
         # Parse la réponse pour extraire les étapes numérotées
         steps = []
-        for line in plan_text.split("\\n"):
+        for line in plan_text.split("\n"):
             line = line.strip()
             if line and line[0].isdigit():
                 steps.append(line)
@@ -66,24 +60,13 @@ Texte à analyser (aperçu) :
         return steps
 
     def _identifier_outil(self, etape: str) -> str:
-        """
-        Identifie quel outil utiliser en lisant le nom dans l'étape du plan.
-        Cherche le nom de l'outil dans le texte de l'étape.
-        """
         etape_lower = etape.lower()
         for tool_name in self.tools.keys():
             if tool_name in etape_lower:
                 return tool_name
-
-        # Fallback : prend le premier outil si aucun n'est trouvé
         return list(self.tools.keys())[0]
 
     def observer(self, etape_nom: str, resultat: str) -> str:
-        """
-        Phase OBSERVATION — L'agent lit son propre résultat.
-        Il formule ce qu'il a appris en une ou deux phrases.
-        Cette étape simule la réflexion de l'agent sur ses propres actions.
-        """
         prompt = f"""Tu es un agent IA qui vient d'exécuter une étape de son analyse.
 Observe le résultat et formule en 1 ou 2 phrases ce que tu retiens.
 Commence obligatoirement par "J'observe que..."
@@ -93,8 +76,25 @@ Etape exécutée : {etape_nom}
 Résultat obtenu :
 {resultat}"""
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
+        return self._call_gemini(prompt)
+
+    def synthetiser(self, texte: str, resultats: List[dict]) -> str:
+        resultats_texte = "\n".join(
+            [f"- {r['nom']}: {r['resultat'][:200]}..." for r in resultats]
+        )
+
+        prompt = f"""Tu es un agent IA qui vient de terminer son analyse.
+Synthétise les résultats en un paragraphe cohérent et informatif.
+
+Résultats obtenus :
+{resultats_texte}
+
+Texte analysé (aperçu) :
+{texte[:300]}
+
+Formule une synthèse finale claire et pertinente."""
+
+        return self._call_gemini(prompt)
 
     async def run(self, texte: str, task: str) -> AgentResponse:
         """
@@ -102,14 +102,14 @@ Résultat obtenu :
         Planifier -> Executer chaque étape -> Observer -> Synthétiser.
         """
 
-        print(f"\\n{'=' * 50}")
+        print(f"\n{'=' * 50}")
         print(f"AGENT DÉMARRÉ")
         print(f"Tâche : {task}")
-        print(f"{'=' * 50}\\n")
+        print(f"{'=' * 50}\n")
 
         # ── PHASE 1 : PLANIFICATION ──────────────────────────────────
         print("Phase 1 — Planification en cours...")
-        plan = self.planifier(texte, task)
+        plan = await asyncio.to_thread(self.planifier, texte, task)
         print(f"Plan établi : {len(plan)} étapes")
         for etape in plan:
             print(f"  {etape}")
@@ -119,25 +119,30 @@ Résultat obtenu :
         resultats_pour_synthese = []
 
         for i, etape in enumerate(plan, start=1):
-            print(f"\\nPhase 2.{i} — Exécution : {etape}")
+            print(f"\nPhase 2.{i} — Exécution : {etape}")
 
-            # Identifier l'outil à utiliser
-            tool_name = self._identifier_outil(etape)
-            tool_function = self.tools[tool_name]
+            try:
+                # Identifier l'outil à utiliser
+                tool_name = self._identifier_outil(etape)
+                tool_function = self.tools[tool_name]
 
-            # Extraire le nom lisible de l'étape
-            step_name = etape.split(":")[1].strip() if ":" in etape else etape
+                # Extraire le nom lisible de l'étape
+                step_name = etape.split(":")[1].strip() if ":" in etape else etape
 
-            # Exécuter l'outil
-            print(f"  Outil utilisé : {tool_name}")
-            result = tool_function(texte)
-            print(f"  Résultat obtenu ({len(result)} caractères)")
+                # Exécuter l'outil
+                print(f"  Outil utilisé : {tool_name}")
+                result = await asyncio.to_thread(tool_function, texte)
+                print(f"  Résultat obtenu ({len(result)} caractères)")
+
+            except Exception as e:
+                print(f"❌ ERREUR Phase 2.{i} : {str(e)}")
+                raise
 
             # Observer le résultat
-            observation = self.observer(tool_name, result)
+            observation = await asyncio.to_thread(self.observer, tool_name, result)
             print(f"  Observation : {observation[:100]}...")
 
-            # Stocker l'étape complète
+            # AJOUTER À LA LISTE
             steps_executed.append(
                 AgentStep(
                     step_number=i,
@@ -156,13 +161,15 @@ Résultat obtenu :
             )
 
         # ── PHASE 3 : SYNTHÈSE FINALE ────────────────────────────────
-        print(f"\\nPhase 3 — Synthèse finale en cours...")
-        final_answer = self.synthetiser(texte, resultats_pour_synthese)
+        print(f"\nPhase 3 — Synthèse finale en cours...")
+        final_answer = await asyncio.to_thread(
+            self.synthetiser, texte, resultats_pour_synthese
+        )
         print("Synthèse générée.")
 
-        print(f"\\n{'=' * 50}")
+        print(f"\n{'=' * 50}")
         print("AGENT TERMINÉ")
-        print(f"{'=' * 50}\\n")
+        print(f"{'=' * 50}\n")
 
         return AgentResponse(
             task=task,
