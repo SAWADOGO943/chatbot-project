@@ -1,7 +1,6 @@
 // ── CONFIGURATION ───────────────────────────────────────────────────
 // URL de base de votre backend sur Render
-const BASE_API_URL = 'https://chatbot-project-n3q5.onrender.com';
-
+const BASE_API_URL = 'https://chatbot-project-n3q5.onrender.com';const API_URL = BASE_API_URL // alias rétrocompatible pour d'anciennes références
 // ── ÉTAT DE L'APPLICATION ────────────────────────────────────────────
 let currentSessionId = null;
 let isWaiting = false;
@@ -179,12 +178,17 @@ async function sendMessage() {
     sendBtn.disabled = true;
 
     try {
-        // Correction : URL propre
+        // Envoi du message au backend
         const response = await fetch(`${BASE_API_URL}/memory-agent/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message, session_id: currentSessionId })
+            body: JSON.stringify({ message, session_id: currentSessionId }),
         });
+
+        if (!response.ok) {
+            const errorBody = await response.text();
+            throw new Error(`HTTP ${response.status} ${response.statusText} - ${errorBody}`);
+        }
 
         const data = await response.json();
         if (!currentSessionId) {
@@ -196,8 +200,9 @@ async function sendMessage() {
         appendMessage('agent', data.response);
         scrollToBottom();
     } catch (error) {
+        console.error('Erreur envoi message :', error);
         removeTyping(typingId);
-        appendMessage('agent', 'Erreur serveur.');
+        appendMessage('agent', 'Erreur serveur : impossible de contacter l’API.');
     } finally {
         isWaiting = false;
         sendBtn.disabled = false;
