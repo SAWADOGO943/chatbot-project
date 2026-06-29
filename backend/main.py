@@ -98,17 +98,15 @@ app = FastAPI(
     version="3.0.0",
     lifespan=lifespan,
 )
-
-# Exemple de configuration sécurisée
+# configuration
+# Dans main.py sur le backend Render
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["chatbot-project.vercel.app"],  # Remplacez par votre vrai domaine
+    # Utilisez votre domaine Vercel principal ici
+    allow_origins=["https://chatbot-project.vercel.app"],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],  # Ne listez que les méthodes nécessaires
-    allow_headers=[
-        "Content-Type",
-        "Authorization",
-    ],  # Ne listez que les headers nécessaires
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
 )
 
 
