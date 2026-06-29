@@ -1,7 +1,7 @@
 // ── CONFIGURATION ───────────────────────────────────────────────────
 //const API_URL = 'https://chatbot-project-n3q5.onrender.com'
   //const API_URL = 'http://localhost:8000'
-  const API_URL = `${BASE_URL}/memory-agent/sessions`
+  const API_URL = `${API_URL}/memory-agent/sessions`
 
 
 // ── ÉTAT DE L'APPLICATION ────────────────────────────────────────────
