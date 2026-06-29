@@ -102,12 +102,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    # Autoriser le domaine principal et les déploiements Vercel (regex)
-    allow_origins=[
-        "https://chatbot-project.vercel.app",
-    ],
-    # Autorise tous les sous-domaines Vercel (préviews) pour les tests/PRs
-    allow_origin_regex=r"https://.*\\.vercel\\.app",
+    # Autoriser tous les domaines temporairement pour tester (ajuster après succès)
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],  # Autorise GET, POST, OPTIONS, etc.
     allow_headers=["*"],  # Autorise tous les headers
