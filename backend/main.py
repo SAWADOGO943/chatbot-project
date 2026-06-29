@@ -106,6 +106,7 @@ app.add_middleware(
     allow_origins=[
         "https://chatbot-project.vercel.app",
         "https://chatbot-project-evfcttpdx-sawadogo943s-projects.vercel.app",
+        "https://chatbot-project-d0tuay7tt-sawadogo943s-projects.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],  # Autorise GET, POST, OPTIONS, etc.
