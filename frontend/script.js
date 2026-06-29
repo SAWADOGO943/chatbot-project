@@ -1,7 +1,4 @@
 // ── CONFIGURATION ───────────────────────────────────────────────────
-//const API_URL = 'https://chatbot-project-n3q5.onrender.com'
-  //const API_URL = 'http://localhost:8000'
- // ── CONFIGURATION ───────────────────────────────────────────────────
 // URL de base de votre backend sur Render
 const BASE_API_URL = 'https://chatbot-project-n3q5.onrender.com';
 
