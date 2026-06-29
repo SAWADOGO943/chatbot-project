@@ -1,4 +1,7 @@
 // ── CONFIGURATION ───────────────────────────────────────────────────
+//const API_URL = 'https://chatbot-project-n3q5.onrender.com'
+  //const API_URL = 'http://localhost:8000'
+ // ── CONFIGURATION ───────────────────────────────────────────────────
 // URL de base de votre backend sur Render
 const BASE_API_URL = 'https://chatbot-project-n3q5.onrender.com';
 
@@ -58,7 +61,51 @@ function renderSessions(sessions) {
     sessionsList.innerHTML = html;
 }
 
-// ... (Gardez vos fonctions groupSessionsByPeriod, formatDate ici) ...
+function groupSessionsByPeriod(sessions) {
+    /**
+     * Regroupe les sessions par période.
+     * Retourne un objet { "Aujourd'hui": [...], "Cette semaine": [...], ... }
+     */
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000)
+
+    const groups = {
+        "Aujourd'hui": [],
+        "Cette semaine": [],
+        "Plus ancien": [],
+    }
+
+    for (const session of sessions) {
+        const date = new Date(session.created_at)
+
+        if (date >= today) {
+            groups["Aujourd'hui"].push(session)
+        } else if (date >= weekAgo) {
+            groups["Cette semaine"].push(session)
+        } else {
+            groups["Plus ancien"].push(session)
+        }
+    }
+
+    return groups
+}
+
+async function selectSession(sessionId) {
+    /**
+     * Sélectionne une session et charge son historique.
+     * Appelé quand l'utilisateur clique sur une session dans la sidebar.
+     */
+    currentSessionId = sessionId
+
+    // Mettre à jour la sidebar visuellement
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === sessionId)
+    })
+
+    // Charger l'historique de cette session
+    await loadSessionHistory(sessionId)
+}
 
 async function loadSessionHistory(sessionId) {
     try {
@@ -79,6 +126,7 @@ async function loadSessionHistory(sessionId) {
     }
 }
 
+
 async function deleteSession(event, sessionId) {
     event.stopPropagation();
     if (!confirm('Supprimer cette conversation ?')) return;
@@ -92,7 +140,35 @@ async function deleteSession(event, sessionId) {
     }
 }
 
+function startNewChat() {
+    /**
+     * Réinitialise l'interface pour une nouvelle conversation.
+     * Ne crée pas de session en base — elle sera créée au premier message.
+     */
+    currentSessionId = null
+
+    // Désélectionner toutes les sessions dans la sidebar
+    document.querySelectorAll('.session-item').forEach(el => {
+        el.classList.remove('active')
+    })
+
+    // Réinitialiser la zone de chat
+    messagesContainer.innerHTML = `
+        <div class="welcome-message">
+            <p>Bonjour 👋 Je suis votre agent IA avec mémoire.</p>
+            <p>Je me souviens de nos conversations précédentes.</p>
+        </div>
+    `
+
+    chatTitle.textContent = 'Nouvelle conversation'
+    userInput.focus()
+}
+
+
 // ══════════════════════════════════════════════════════════════════════
+// CHAT — ENVOI ET RÉCEPTION DES MESSAGES
+// ══════════════════════════════════════════════════════════════════════
+
 // CHAT — ENVOI MESSAGES
 async function sendMessage() {
     const message = userInput.value.trim();
@@ -131,6 +207,138 @@ async function sendMessage() {
     }
 }
 
-// ... (Gardez vos fonctions utilitaires : appendMessage, appendTyping, etc.)
-// Assurez-vous d'appeler init() à la fin
-init();
+
+// ══════════════════════════════════════════════════════════════════════
+// UTILITAIRES — AFFICHAGE
+// ══════════════════════════════════════════════════════════════════════
+
+function appendMessage(role, content) {
+    /**
+     * Ajoute une bulle de message dans la zone de chat.
+     * role : 'user' ou 'agent'
+     */
+    const avatar = role === 'user' ? '👤' : '🤖'
+
+    const div = document.createElement('div')
+    div.className = `message ${role}`
+    div.innerHTML = `
+        <div class="message-avatar">${avatar}</div>
+        <div class="message-bubble">${escapeHtml(content)}</div>
+    `
+
+    messagesContainer.appendChild(div)
+    return div
+}
+
+function appendTyping() {
+    /**
+     * Affiche un indicateur "en train d'écrire..."
+     * Retourne un ID unique pour pouvoir le supprimer ensuite.
+     */
+    const id = 'typing-' + Date.now()
+
+    const div = document.createElement('div')
+    div.className = 'message agent message-typing'
+    div.id = id
+    div.innerHTML = `
+        <div class="message-avatar">🤖</div>
+        <div class="message-bubble">En train d'écrire...</div>
+    `
+
+    messagesContainer.appendChild(div)
+    scrollToBottom()
+    return id
+}
+
+function removeTyping(id) {
+    /**
+     * Supprime l'indicateur "en train d'écrire..."
+     */
+    const el = document.getElementById(id)
+    if (el) el.remove()
+}
+
+function scrollToBottom() {
+    /**
+     * Fait défiler la zone de chat vers le bas.
+     * Appelé après chaque nouveau message.
+     */
+    messagesContainer.scrollTop = messagesContainer.scrollHeight
+}
+
+function escapeHtml(text) {
+    /**
+     * Sécurise le texte avant de l'injecter dans le DOM.
+     * Empêche les injections HTML/XSS.
+     */
+    const div = document.createElement('div')
+    div.appendChild(document.createTextNode(text))
+    return div.innerHTML
+}
+
+function formatDate(isoString) {
+    /**
+     * Formate une date ISO en format lisible.
+     * "2025-01-15T18:30:00" → "15/01 à 18h30"
+     */
+    try {
+        const date = new Date(isoString)
+        const day  = date.getDate().toString().padStart(2, '0')
+        const month = (date.getMonth() + 1).toString().padStart(2, '0')
+        const hours = date.getHours().toString().padStart(2, '0')
+        const mins  = date.getMinutes().toString().padStart(2, '0')
+        return `${day}/${month} à ${hours}h${mins}`
+    } catch {
+        return 'date inconnue'
+    }
+}
+
+function autoResizeTextarea() {
+    /**
+     * Ajuste automatiquement la hauteur du textarea
+     * selon le contenu (jusqu'à max-height défini en CSS).
+     */
+    userInput.style.height = 'auto'
+    userInput.style.height = userInput.scrollHeight + 'px'
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+// ÉVÉNEMENTS
+// ══════════════════════════════════════════════════════════════════════
+
+// Bouton envoyer
+sendBtn.addEventListener('click', sendMessage)
+
+// Entrée clavier — Shift+Enter pour nouvelle ligne, Enter pour envoyer
+userInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        sendMessage()
+    }
+})
+
+// Redimensionner le textarea à la saisie
+userInput.addEventListener('input', autoResizeTextarea)
+
+// Bouton nouvelle conversation
+btnNewChat.addEventListener('click', startNewChat)
+
+
+// ══════════════════════════════════════════════════════════════════════
+// INITIALISATION AU CHARGEMENT DE LA PAGE
+// ══════════════════════════════════════════════════════════════════════
+
+async function init() {
+    /**
+     * Point d'entrée — s'exécute quand la page est chargée.
+     * Charge les sessions existantes et affiche la plus récente.
+     */
+    await loadSessions()
+
+    // Mettre le curseur dans le champ de saisie
+    userInput.focus()
+}
+
+// Lancer l'initialisation
+init()
